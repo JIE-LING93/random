@@ -1,0 +1,781 @@
+<!doctype html>
+<html lang="zh-TW" class="h-full">
+ <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>簡易抽獎系統</title>
+  <script src="/_sdk/element_sdk.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      box-sizing: border-box;
+    }
+    
+    @keyframes pulse-glow {
+      0%, 100% {
+        box-shadow: 0 0 20px rgba(236, 72, 153, 0.5);
+      }
+      50% {
+        box-shadow: 0 0 40px rgba(236, 72, 153, 0.8);
+      }
+    }
+    
+    .winner-display {
+      animation: pulse-glow 1s ease-in-out infinite;
+    }
+    
+    @keyframes balloon-float {
+      0% {
+        transform: translateY(100%) translateX(0) rotate(0deg);
+        opacity: 1;
+      }
+      50% {
+        transform: translateY(-50%) translateX(var(--float-x)) rotate(180deg);
+      }
+      100% {
+        transform: translateY(-120%) translateX(0) rotate(360deg);
+        opacity: 0;
+      }
+    }
+    
+    .balloon {
+      position: fixed;
+      font-size: 40px;
+      z-index: 9999;
+      pointer-events: none;
+      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.2));
+    }
+    
+    @keyframes firework-burst {
+      0% {
+        transform: scale(0) rotate(0deg);
+        opacity: 1;
+      }
+      50% {
+        opacity: 1;
+      }
+      100% {
+        transform: scale(2) rotate(180deg);
+        opacity: 0;
+      }
+    }
+    
+    .firework-particle {
+      position: fixed;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      z-index: 9998;
+      pointer-events: none;
+    }
+    
+    @keyframes sparkle {
+      0%, 100% {
+        transform: scale(0) rotate(0deg);
+        opacity: 0;
+      }
+      50% {
+        transform: scale(1) rotate(180deg);
+        opacity: 1;
+      }
+    }
+    
+    .sparkle {
+      position: fixed;
+      font-size: 24px;
+      z-index: 9997;
+      pointer-events: none;
+      animation: sparkle 1.5s ease-in-out;
+    }
+  </style>
+  <style>@view-transition { navigation: auto; }</style>
+  <script src="/_sdk/data_sdk.js" type="text/javascript"></script>
+ </head>
+ <body class="h-full overflow-hidden">
+  <div id="app-wrapper" class="w-full h-full">
+   <div id="lottery-container" class="h-full p-6 flex flex-col">
+    <h1 id="page-title" class="text-4xl font-bold text-center mb-4">🎉 抽獎系統</h1>
+    <div class="grid grid-cols-3 gap-4 flex-1 overflow-hidden"><!-- 左欄：設定獎品 -->
+     <div class="bg-white rounded-xl shadow-lg p-6 flex flex-col overflow-hidden">
+      <h2 class="text-2xl font-semibold mb-4">設定獎品</h2>
+      <div id="prizes-container" class="space-y-3 mb-4 flex-1 overflow-y-auto"><!-- 獎品項目會動態添加在這裡 -->
+      </div><button id="add-prize-btn" class="w-full text-white font-bold py-3 px-6 rounded-xl text-lg transition-all duration-200 hover:opacity-90"> ➕ 新增獎品 </button>
+     </div><!-- 中欄：參加者名單 -->
+     <div class="bg-white rounded-xl shadow-lg p-6 flex flex-col overflow-hidden">
+      <h2 class="text-2xl font-semibold mb-4">參加者名單</h2><label for="name-list" class="block text-base font-semibold mb-2">貼上名單（每行一個名字）</label> <textarea id="name-list" class="w-full p-4 border-2 rounded-xl text-base focus:outline-none focus:ring-2 resize-none flex-1 mb-3" placeholder="張三
+李四
+王五
+趙六
+..."></textarea>
+      <div class="flex justify-between items-center mb-4">
+       <p id="instruction-text" class="text-sm">輸入完名單後，點擊「開始抽獎」</p>
+       <p id="participant-count" class="text-sm font-semibold">參加人數：0 人</p>
+      </div>
+      <div class="flex gap-3"><button id="start-btn" class="flex-1 text-white font-bold py-3 px-6 rounded-xl text-lg transition-all duration-200 hover:opacity-90"> 開始抽獎 🎲 </button> <button id="reset-btn" class="flex-1 text-white font-bold py-3 px-6 rounded-xl text-lg transition-all duration-200 hover:opacity-90"> 重置 🔄 </button>
+      </div>
+      <div id="rolling-display" class="text-center py-6 bg-gradient-to-br rounded-xl mt-4 hidden">
+       <div id="current-prize" class="text-xl mb-3">
+        正在抽出：
+       </div>
+       <div id="rolling-name" class="text-5xl font-bold mb-3">
+        準備中...
+       </div>
+       <div class="text-base">
+        抽獎進行中...
+       </div>
+      </div>
+      <div id="winner-display" class="text-center py-6 rounded-xl mt-4 hidden winner-display">
+       <div class="text-2xl mb-3">
+        🎉 恭喜中獎 🎊
+       </div>
+       <div id="winner-prize" class="text-2xl mb-3"></div>
+       <div id="winner-name" class="text-6xl font-bold mb-4"></div>
+       <div class="text-base">
+        就是你了！
+       </div>
+      </div>
+     </div><!-- 右欄：中獎紀錄 -->
+     <div id="history-section" class="bg-white rounded-xl shadow-lg p-6 flex flex-col overflow-hidden">
+      <div class="flex justify-between items-center mb-4">
+       <h2 class="text-2xl font-bold">中獎紀錄</h2><button id="clear-history-btn" class="text-white font-bold py-2 px-4 rounded-lg text-sm transition-all duration-200 hover:opacity-90"> 清除紀錄 </button>
+      </div>
+      <div id="winner-history" class="space-y-2 overflow-y-auto flex-1"></div>
+     </div>
+    </div>
+   </div>
+  </div>
+  <script>
+    const defaultConfig = {
+      background_color: "#f0f4ff",
+      surface_color: "#ffffff",
+      text_color: "#1e293b",
+      primary_action_color: "#ec4899",
+      secondary_action_color: "#8b5cf6",
+      font_family: "system-ui",
+      font_size: 16,
+      page_title: "🎉 抽獎系統",
+      instruction_text: "輸入完名單後，點擊「開始抽獎」",
+      add_prize_button: "➕ 新增獎品",
+      participants_label: "參加人數",
+      start_button_text: "開始抽獎 🎲",
+      reset_button_text: "重置 🔄"
+    };
+
+    let prizes = [];
+    let names = [];
+    let originalNames = [];
+    let rollingInterval = null;
+    let isRolling = false;
+    let winners = [];
+    let currentPrizeIndex = 0;
+    let currentDrawInPrize = 0;
+
+    async function onConfigChange(config) {
+      const baseFontSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseFontStack = 'system-ui, -apple-system, sans-serif';
+      const fontFamily = `${customFont}, ${baseFontStack}`;
+
+      // Apply colors
+      document.getElementById('lottery-container').style.background = config.background_color || defaultConfig.background_color;
+      
+      const surfaces = document.querySelectorAll('.bg-white');
+      surfaces.forEach(surface => {
+        surface.style.background = config.surface_color || defaultConfig.surface_color;
+      });
+
+      // Apply text colors
+      document.getElementById('page-title').style.color = config.text_color || defaultConfig.text_color;
+      document.querySelector('label[for="name-list"]').style.color = config.text_color || defaultConfig.text_color;
+      document.getElementById('instruction-text').style.color = config.text_color || defaultConfig.text_color;
+      document.getElementById('participant-count').style.color = config.text_color || defaultConfig.text_color;
+      
+      const h2Elements = document.querySelectorAll('h2');
+      h2Elements.forEach(h2 => {
+        h2.style.color = config.text_color || defaultConfig.text_color;
+      });
+
+      // Apply button colors
+      document.getElementById('start-btn').style.background = config.primary_action_color || defaultConfig.primary_action_color;
+      document.getElementById('reset-btn').style.background = config.secondary_action_color || defaultConfig.secondary_action_color;
+      document.getElementById('add-prize-btn').style.background = config.secondary_action_color || defaultConfig.secondary_action_color;
+      document.getElementById('clear-history-btn').style.background = config.primary_action_color || defaultConfig.primary_action_color;
+
+      // Apply input border colors
+      document.getElementById('name-list').style.borderColor = config.secondary_action_color || defaultConfig.secondary_action_color;
+      document.getElementById('name-list').style.color = config.text_color || defaultConfig.text_color;
+
+      // Apply rolling display gradient
+      const rollingDisplay = document.getElementById('rolling-display');
+      rollingDisplay.style.background = `linear-gradient(135deg, ${config.primary_action_color || defaultConfig.primary_action_color}, ${config.secondary_action_color || defaultConfig.secondary_action_color})`;
+      rollingDisplay.querySelectorAll('div').forEach(div => {
+        div.style.color = '#ffffff';
+      });
+
+      // Apply winner display
+      document.getElementById('winner-display').style.background = config.surface_color || defaultConfig.surface_color;
+      document.getElementById('winner-name').style.color = config.text_color || defaultConfig.text_color;
+      document.getElementById('winner-prize').style.color = config.text_color || defaultConfig.text_color;
+
+      // Apply fonts
+      document.getElementById('page-title').style.fontFamily = fontFamily;
+      document.getElementById('page-title').style.fontSize = `${baseFontSize * 2.5}px`;
+      
+      h2Elements.forEach(h2 => {
+        h2.style.fontFamily = fontFamily;
+        h2.style.fontSize = `${baseFontSize * 1.5}px`;
+      });
+      
+      document.querySelector('label[for="name-list"]').style.fontFamily = fontFamily;
+      document.querySelector('label[for="name-list"]').style.fontSize = `${baseFontSize}px`;
+      
+      document.getElementById('name-list').style.fontFamily = fontFamily;
+      document.getElementById('name-list').style.fontSize = `${baseFontSize}px`;
+      
+      document.getElementById('instruction-text').style.fontFamily = fontFamily;
+      document.getElementById('instruction-text').style.fontSize = `${baseFontSize * 0.875}px`;
+      
+      document.getElementById('participant-count').style.fontFamily = fontFamily;
+      document.getElementById('participant-count').style.fontSize = `${baseFontSize * 0.875}px`;
+      
+      const buttons = [document.getElementById('start-btn'), document.getElementById('reset-btn')];
+      buttons.forEach(btn => {
+        btn.style.fontFamily = fontFamily;
+        btn.style.fontSize = `${baseFontSize * 1.125}px`;
+      });
+      
+      document.getElementById('add-prize-btn').style.fontFamily = fontFamily;
+      document.getElementById('add-prize-btn').style.fontSize = `${baseFontSize * 1.125}px`;
+      
+      document.getElementById('clear-history-btn').style.fontFamily = fontFamily;
+      document.getElementById('clear-history-btn').style.fontSize = `${baseFontSize * 0.875}px`;
+      
+      document.getElementById('rolling-name').style.fontFamily = fontFamily;
+      document.getElementById('rolling-name').style.fontSize = `${baseFontSize * 3}px`;
+      
+      document.getElementById('winner-name').style.fontFamily = fontFamily;
+      document.getElementById('winner-name').style.fontSize = `${baseFontSize * 3.75}px`;
+      
+      document.getElementById('winner-prize').style.fontFamily = fontFamily;
+      document.getElementById('winner-prize').style.fontSize = `${baseFontSize * 1.25}px`;
+
+      // Apply text content
+      document.getElementById('page-title').textContent = config.page_title || defaultConfig.page_title;
+      document.getElementById('instruction-text').textContent = config.instruction_text || defaultConfig.instruction_text;
+      document.getElementById('add-prize-btn').textContent = config.add_prize_button || defaultConfig.add_prize_button;
+      document.getElementById('start-btn').textContent = config.start_button_text || defaultConfig.start_button_text;
+      document.getElementById('reset-btn').textContent = config.reset_button_text || defaultConfig.reset_button_text;
+      
+      // Update all prize items styling
+      updateAllPrizeItemsStyle();
+      
+      updateParticipantCount();
+    }
+
+    function mapToCapabilities(config) {
+      return {
+        recolorables: [
+          {
+            get: () => config.background_color || defaultConfig.background_color,
+            set: (value) => {
+              config.background_color = value;
+              window.elementSdk.setConfig({ background_color: value });
+            }
+          },
+          {
+            get: () => config.surface_color || defaultConfig.surface_color,
+            set: (value) => {
+              config.surface_color = value;
+              window.elementSdk.setConfig({ surface_color: value });
+            }
+          },
+          {
+            get: () => config.text_color || defaultConfig.text_color,
+            set: (value) => {
+              config.text_color = value;
+              window.elementSdk.setConfig({ text_color: value });
+            }
+          },
+          {
+            get: () => config.primary_action_color || defaultConfig.primary_action_color,
+            set: (value) => {
+              config.primary_action_color = value;
+              window.elementSdk.setConfig({ primary_action_color: value });
+            }
+          },
+          {
+            get: () => config.secondary_action_color || defaultConfig.secondary_action_color,
+            set: (value) => {
+              config.secondary_action_color = value;
+              window.elementSdk.setConfig({ secondary_action_color: value });
+            }
+          }
+        ],
+        borderables: [],
+        fontEditable: {
+          get: () => config.font_family || defaultConfig.font_family,
+          set: (value) => {
+            config.font_family = value;
+            window.elementSdk.setConfig({ font_family: value });
+          }
+        },
+        fontSizeable: {
+          get: () => config.font_size || defaultConfig.font_size,
+          set: (value) => {
+            config.font_size = value;
+            window.elementSdk.setConfig({ font_size: value });
+          }
+        }
+      };
+    }
+
+    function mapToEditPanelValues(config) {
+      return new Map([
+        ["page_title", config.page_title || defaultConfig.page_title],
+        ["instruction_text", config.instruction_text || defaultConfig.instruction_text],
+        ["add_prize_button", config.add_prize_button || defaultConfig.add_prize_button],
+        ["participants_label", config.participants_label || defaultConfig.participants_label],
+        ["start_button_text", config.start_button_text || defaultConfig.start_button_text],
+        ["reset_button_text", config.reset_button_text || defaultConfig.reset_button_text]
+      ]);
+    }
+
+    function parseNames() {
+      const textarea = document.getElementById('name-list');
+      const text = textarea.value.trim();
+      return text.split('\n').map(name => name.trim()).filter(name => name.length > 0);
+    }
+
+    function updateParticipantCount() {
+      const currentNames = parseNames();
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const label = config.participants_label || defaultConfig.participants_label;
+      document.getElementById('participant-count').textContent = `${label}：${currentNames.length} 人`;
+    }
+
+    function createPrizeItem() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseFontSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseFontStack = 'system-ui, -apple-system, sans-serif';
+      const fontFamily = `${customFont}, ${baseFontStack}`;
+      
+      const prizeId = Date.now();
+      const prizeItem = document.createElement('div');
+      prizeItem.className = 'prize-item flex gap-2 items-center p-3 rounded-lg';
+      prizeItem.style.background = config.background_color || defaultConfig.background_color;
+      prizeItem.dataset.prizeId = prizeId;
+      
+      prizeItem.innerHTML = `
+        <input type="text" placeholder="獎品名稱" class="flex-1 p-2 border-2 rounded-lg text-sm focus:outline-none focus:ring-2 prize-name-input">
+        <input type="number" placeholder="數量" min="1" value="1" class="w-16 p-2 border-2 rounded-lg text-sm focus:outline-none focus:ring-2 prize-quantity-input">
+        <button class="remove-prize-btn text-white font-bold py-2 px-3 rounded-lg transition-all duration-200 hover:opacity-90">🗑️</button>
+      `;
+      
+      const inputs = prizeItem.querySelectorAll('input');
+      inputs.forEach(input => {
+        input.style.borderColor = config.secondary_action_color || defaultConfig.secondary_action_color;
+        input.style.fontFamily = fontFamily;
+        input.style.fontSize = `${baseFontSize * 0.875}px`;
+        input.style.color = config.text_color || defaultConfig.text_color;
+      });
+      
+      const removeBtn = prizeItem.querySelector('.remove-prize-btn');
+      removeBtn.style.background = config.primary_action_color || defaultConfig.primary_action_color;
+      removeBtn.style.fontFamily = fontFamily;
+      removeBtn.style.fontSize = `${baseFontSize * 0.875}px`;
+      
+      removeBtn.addEventListener('click', () => {
+        prizeItem.remove();
+        prizes = prizes.filter(p => p.id !== prizeId);
+      });
+      
+      return prizeItem;
+    }
+
+    function updateAllPrizeItemsStyle() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const baseFontSize = config.font_size || defaultConfig.font_size;
+      const customFont = config.font_family || defaultConfig.font_family;
+      const baseFontStack = 'system-ui, -apple-system, sans-serif';
+      const fontFamily = `${customFont}, ${baseFontStack}`;
+      
+      document.querySelectorAll('.prize-item').forEach(item => {
+        item.style.background = config.background_color || defaultConfig.background_color;
+        
+        const inputs = item.querySelectorAll('input');
+        inputs.forEach(input => {
+          input.style.borderColor = config.secondary_action_color || defaultConfig.secondary_action_color;
+          input.style.fontFamily = fontFamily;
+          input.style.fontSize = `${baseFontSize * 0.875}px`;
+          input.style.color = config.text_color || defaultConfig.text_color;
+        });
+        
+        const removeBtn = item.querySelector('.remove-prize-btn');
+        removeBtn.style.background = config.primary_action_color || defaultConfig.primary_action_color;
+        removeBtn.style.fontFamily = fontFamily;
+        removeBtn.style.fontSize = `${baseFontSize * 0.875}px`;
+      });
+    }
+
+    function addPrize() {
+      const container = document.getElementById('prizes-container');
+      const prizeItem = createPrizeItem();
+      container.appendChild(prizeItem);
+    }
+
+    function collectPrizes() {
+      const prizeItems = document.querySelectorAll('.prize-item');
+      const collectedPrizes = [];
+      
+      prizeItems.forEach(item => {
+        const nameInput = item.querySelector('.prize-name-input');
+        const quantityInput = item.querySelector('.prize-quantity-input');
+        const name = nameInput.value.trim();
+        const quantity = parseInt(quantityInput.value) || 1;
+        
+        if (name) {
+          collectedPrizes.push({
+            id: item.dataset.prizeId,
+            name: name,
+            quantity: quantity
+          });
+        }
+      });
+      
+      return collectedPrizes;
+    }
+
+    function startLottery() {
+      prizes = collectPrizes();
+      originalNames = parseNames();
+      names = [...originalNames];
+      
+      if (prizes.length === 0) {
+        showCustomMessage('請至少新增一個獎品！');
+        return;
+      }
+      
+      if (names.length === 0) {
+        showCustomMessage('請先輸入參加者名單！');
+        return;
+      }
+      
+      const totalDraws = prizes.reduce((sum, prize) => sum + prize.quantity, 0);
+      if (totalDraws > names.length) {
+        showCustomMessage(`總抽出數量（${totalDraws}）不能超過參加人數（${names.length}）！`);
+        return;
+      }
+
+      currentPrizeIndex = 0;
+      currentDrawInPrize = 0;
+      
+      document.getElementById('start-btn').disabled = true;
+      document.getElementById('start-btn').style.opacity = '0.5';
+      document.getElementById('name-list').disabled = true;
+      document.getElementById('add-prize-btn').disabled = true;
+      document.getElementById('add-prize-btn').style.opacity = '0.5';
+      
+      document.querySelectorAll('.prize-item input').forEach(input => {
+        input.disabled = true;
+      });
+      document.querySelectorAll('.remove-prize-btn').forEach(btn => {
+        btn.disabled = true;
+        btn.style.opacity = '0.5';
+      });
+      
+      startSingleDraw();
+    }
+
+    function startSingleDraw() {
+      if (currentPrizeIndex >= prizes.length) {
+        finishAllDraws();
+        return;
+      }
+      
+      const currentPrize = prizes[currentPrizeIndex];
+      
+      if (currentDrawInPrize >= currentPrize.quantity) {
+        currentPrizeIndex++;
+        currentDrawInPrize = 0;
+        startSingleDraw();
+        return;
+      }
+
+      isRolling = true;
+      document.getElementById('rolling-display').classList.remove('hidden');
+      document.getElementById('winner-display').classList.add('hidden');
+      document.getElementById('current-prize').textContent = `正在抽出：${currentPrize.name}`;
+
+      const rollingNameEl = document.getElementById('rolling-name');
+      let rollCount = 0;
+      const maxRolls = 30;
+      
+      rollingInterval = setInterval(() => {
+        const randomIndex = Math.floor(Math.random() * names.length);
+        rollingNameEl.textContent = names[randomIndex];
+        
+        rollCount++;
+        if (rollCount >= maxRolls) {
+          stopSingleDraw();
+        }
+      }, 100);
+    }
+
+    function stopSingleDraw() {
+      if (!isRolling) return;
+
+      clearInterval(rollingInterval);
+      isRolling = false;
+
+      const winner = names[Math.floor(Math.random() * names.length)];
+      const currentPrize = prizes[currentPrizeIndex];
+      
+      winners.push({ 
+        name: winner, 
+        prize: currentPrize.name,
+        prizeIndex: currentPrizeIndex,
+        drawIndex: currentDrawInPrize
+      });
+      
+      names = names.filter(name => name !== winner);
+
+      document.getElementById('rolling-display').classList.add('hidden');
+      document.getElementById('winner-display').classList.remove('hidden');
+      document.getElementById('winner-name').textContent = winner;
+      document.getElementById('winner-prize').textContent = `獲得：${currentPrize.name}`;
+
+      updateHistory();
+
+      currentDrawInPrize++;
+      
+      setTimeout(() => {
+        startSingleDraw();
+      }, 3000);
+    }
+
+    function finishAllDraws() {
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('start-btn').style.opacity = '1';
+      document.getElementById('name-list').disabled = false;
+      document.getElementById('add-prize-btn').disabled = false;
+      document.getElementById('add-prize-btn').style.opacity = '1';
+      
+      document.querySelectorAll('.prize-item input').forEach(input => {
+        input.disabled = false;
+      });
+      document.querySelectorAll('.remove-prize-btn').forEach(btn => {
+        btn.disabled = false;
+        btn.style.opacity = '1';
+      });
+      
+      // 觸發慶祝特效
+      celebrateFinish();
+    }
+    
+    function celebrateFinish() {
+      // 創建彩球從底部飄上來
+      for (let i = 0; i < 50; i++) {
+        setTimeout(() => {
+          createBalloon();
+        }, i * 80);
+      }
+      
+      // 創建煙火爆炸效果
+      for (let i = 0; i < 12; i++) {
+        setTimeout(() => {
+          createFireworkBurst();
+        }, i * 300);
+      }
+      
+      // 創建閃爍星星
+      for (let i = 0; i < 30; i++) {
+        setTimeout(() => {
+          createSparkle();
+        }, i * 100);
+      }
+      
+      // 顯示完成訊息
+      showCustomMessage('🎉 所有抽獎完成！恭喜所有中獎者！ 🎉', 4000);
+    }
+    
+    function createBalloon() {
+      const balloons = ['🎈', '🎊', '🎉', '🎁', '✨', '🌟', '💫', '⭐'];
+      
+      const balloon = document.createElement('div');
+      balloon.className = 'balloon';
+      balloon.textContent = balloons[Math.floor(Math.random() * balloons.length)];
+      balloon.style.left = Math.random() * 100 + '%';
+      balloon.style.setProperty('--float-x', (Math.random() - 0.5) * 200 + 'px');
+      balloon.style.animation = `balloon-float ${3 + Math.random() * 2}s ease-out`;
+      
+      document.body.appendChild(balloon);
+      
+      setTimeout(() => {
+        balloon.remove();
+      }, 5000);
+    }
+    
+    function createFireworkBurst() {
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      const colors = [
+        config.primary_action_color || defaultConfig.primary_action_color,
+        config.secondary_action_color || defaultConfig.secondary_action_color,
+        '#FFD700',
+        '#FF6B6B',
+        '#4ECDC4',
+        '#45B7D1',
+        '#FFA500',
+        '#FF69B4'
+      ];
+      
+      const centerX = 20 + Math.random() * 60;
+      const centerY = 20 + Math.random() * 60;
+      
+      // 創建多個粒子從中心爆炸
+      for (let i = 0; i < 20; i++) {
+        const particle = document.createElement('div');
+        particle.className = 'firework-particle';
+        particle.style.left = centerX + '%';
+        particle.style.top = centerY + '%';
+        particle.style.background = colors[Math.floor(Math.random() * colors.length)];
+        
+        const angle = (Math.PI * 2 * i) / 20;
+        const distance = 50 + Math.random() * 100;
+        const endX = Math.cos(angle) * distance;
+        const endY = Math.sin(angle) * distance;
+        
+        particle.style.animation = `firework-burst 1s ease-out`;
+        particle.style.setProperty('--end-x', endX + 'px');
+        particle.style.setProperty('--end-y', endY + 'px');
+        
+        // 使用transform來模擬爆炸效果
+        setTimeout(() => {
+          particle.style.transform = `translate(${endX}px, ${endY}px)`;
+        }, 10);
+        
+        document.body.appendChild(particle);
+        
+        setTimeout(() => {
+          particle.remove();
+        }, 1000);
+      }
+    }
+    
+    function createSparkle() {
+      const sparkles = ['✨', '⭐', '🌟', '💫', '⚡'];
+      
+      const sparkle = document.createElement('div');
+      sparkle.className = 'sparkle';
+      sparkle.textContent = sparkles[Math.floor(Math.random() * sparkles.length)];
+      sparkle.style.left = Math.random() * 100 + '%';
+      sparkle.style.top = Math.random() * 100 + '%';
+      
+      document.body.appendChild(sparkle);
+      
+      setTimeout(() => {
+        sparkle.remove();
+      }, 1500);
+    }
+
+    function resetLottery() {
+      clearInterval(rollingInterval);
+      isRolling = false;
+      winners = [];
+      currentPrizeIndex = 0;
+      currentDrawInPrize = 0;
+
+      document.getElementById('name-list').value = '';
+      document.getElementById('prizes-container').innerHTML = '';
+      prizes = [];
+      
+      document.getElementById('name-list').disabled = false;
+      document.getElementById('add-prize-btn').disabled = false;
+      document.getElementById('add-prize-btn').style.opacity = '1';
+      document.getElementById('start-btn').disabled = false;
+      document.getElementById('start-btn').style.opacity = '1';
+      document.getElementById('rolling-display').classList.add('hidden');
+      document.getElementById('winner-display').classList.add('hidden');
+      document.getElementById('winner-history').innerHTML = '';
+      
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      document.getElementById('instruction-text').textContent = config.instruction_text || defaultConfig.instruction_text;
+      updateParticipantCount();
+    }
+
+    function updateHistory() {
+      if (winners.length === 0) return;
+
+      const historyContainer = document.getElementById('winner-history');
+      historyContainer.innerHTML = '';
+
+      const prizeGroups = {};
+      winners.forEach(winnerObj => {
+        if (!prizeGroups[winnerObj.prize]) {
+          prizeGroups[winnerObj.prize] = [];
+        }
+        prizeGroups[winnerObj.prize].push(winnerObj);
+      });
+
+      Object.keys(prizeGroups).forEach(prizeName => {
+        const prizeGroup = prizeGroups[prizeName];
+        
+        const groupTitle = document.createElement('div');
+        groupTitle.className = 'font-bold text-lg mt-2 mb-1';
+        groupTitle.textContent = `${prizeName}`;
+        const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+        groupTitle.style.color = config.text_color || defaultConfig.text_color;
+        historyContainer.appendChild(groupTitle);
+        
+        prizeGroup.forEach((winnerObj, index) => {
+          const entry = document.createElement('div');
+          entry.className = 'p-2 rounded-lg text-sm';
+          entry.style.background = config.background_color || defaultConfig.background_color;
+          entry.style.color = config.text_color || defaultConfig.text_color;
+          entry.textContent = `第 ${index + 1} 位：${winnerObj.name}`;
+          historyContainer.appendChild(entry);
+        });
+      });
+    }
+
+    function showCustomMessage(message, duration = 3000) {
+      const messageDiv = document.createElement('div');
+      messageDiv.className = 'fixed top-8 left-1/2 transform -translate-x-1/2 px-6 py-4 rounded-xl text-white font-bold text-lg shadow-2xl z-50';
+      const config = window.elementSdk ? window.elementSdk.config : defaultConfig;
+      messageDiv.style.background = config.primary_action_color || defaultConfig.primary_action_color;
+      messageDiv.textContent = message;
+      
+      document.body.appendChild(messageDiv);
+      
+      setTimeout(() => {
+        messageDiv.remove();
+      }, duration);
+    }
+
+    function clearHistory() {
+      winners = [];
+      document.getElementById('winner-history').innerHTML = '';
+      showCustomMessage('中獎紀錄已清除');
+    }
+
+    document.getElementById('name-list').addEventListener('input', updateParticipantCount);
+    document.getElementById('add-prize-btn').addEventListener('click', addPrize);
+    document.getElementById('start-btn').addEventListener('click', startLottery);
+    document.getElementById('reset-btn').addEventListener('click', resetLottery);
+    document.getElementById('clear-history-btn').addEventListener('click', clearHistory);
+
+    if (window.elementSdk) {
+      window.elementSdk.init({
+        defaultConfig,
+        onConfigChange,
+        mapToCapabilities,
+        mapToEditPanelValues
+      });
+    }
+
+    onConfigChange(defaultConfig);
+    
+    addPrize();
+  </script>
+ <script>(function(){function c(){var b=a.contentDocument||a.contentWindow.document;if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'9b0c48f2418fa9c2',t:'MTc2NjIwMzc3NC4wMDAwMDA='};var a=document.createElement('script');a.nonce='';a.src='/cdn-cgi/challenge-platform/scripts/jsd/main.js';document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+</html>
